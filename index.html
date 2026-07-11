@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>南凤中医 TCM Duty Roster</title>
+<style>
+:root{--blue:#2F5496;--lt:#EAF0F9;--green:#1E8E3E;--red:#C5221F;--gray:#5f6368;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:#f6f8fc;color:#202124}
+header{background:var(--blue);color:#fff;padding:10px 14px 8px;position:sticky;top:0;z-index:6}
+header h1{font-size:19px;font-weight:700}
+header .sub{font-size:11px;opacity:.85;margin-top:2px}
+.mode{display:flex;background:#fff;border-bottom:2px solid #e0e4ec;position:sticky;top:54px;z-index:6}
+.mode button{flex:1;padding:11px 0;font-size:17px;font-weight:700;border:none;background:none;color:var(--gray);border-bottom:4px solid transparent}
+.mode button.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--lt)}
+.wknav{display:flex;gap:8px;padding:8px;background:#fff;border-bottom:1px solid #e0e4ec}
+.wknav button{flex:1;padding:8px 4px;font-size:14px;font-weight:700;border:2px solid var(--lt);background:#fff;color:var(--gray);border-radius:10px}
+.wknav button.on{background:var(--lt);color:var(--blue);border-color:var(--blue)}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #e0e4ec}
+.tab{flex:1;text-align:center;padding:7px 0 5px;border:none;background:none;font-size:14px;color:var(--gray);border-bottom:4px solid transparent}
+.tab .dw{display:block;font-size:12px}
+.tab .dd{display:block;font-size:18px;font-weight:700}
+.tab.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--lt)}
+.tab.nodata{opacity:.3}
+.tab.today .dd::after{content:"•";color:var(--red);font-size:13px;vertical-align:top}
+main{padding:8px 8px 30px;max-width:600px;margin:0 auto}
+.datehdr{font-size:16px;font-weight:700;color:var(--blue);padding:8px 6px 4px}
+.sesshdr{font-size:15px;font-weight:700;color:#fff;background:var(--blue);border-radius:10px 10px 0 0;padding:8px 12px;margin-top:12px}
+table{width:100%;border-collapse:collapse;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+table.sess{border-radius:0 0 12px 12px;overflow:hidden}
+th{background:var(--lt);color:var(--blue);font-size:13px;padding:6px 4px;font-weight:700}
+td{padding:8px 4px;text-align:center;font-size:16px;border-top:1px solid #eef1f6}
+td.rm{font-weight:700;color:var(--blue);font-size:15px}
+td.rl{font-size:14px;color:var(--gray)}
+.offbox{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-top:12px;padding:10px 12px}
+.offbox .t{font-size:15px;font-weight:700;color:var(--red);margin-bottom:6px}
+.offbadge{display:inline-block;background:#fdecea;color:var(--red);font-size:14px;font-weight:700;border-radius:8px;padding:5px 10px;margin:3px 4px 3px 0}
+.empty{text-align:center;color:var(--gray);font-size:16px;padding:36px 10px}
+.pick{width:100%;font-size:18px;font-weight:700;padding:12px;border:2px solid var(--blue);border-radius:12px;background:#fff;color:var(--blue);margin:10px 0}
+table.person td{font-size:15px}
+table.person td.day{font-weight:700;color:var(--blue);font-size:14px;text-align:left;padding-left:10px;white-space:nowrap}
+table.person tr.wk td{background:var(--lt);color:var(--blue);font-weight:700;font-size:13px;text-align:left;padding:5px 10px}
+.offcell{color:var(--red);font-weight:700;font-size:13px}
+footer{text-align:center;font-size:12px;color:var(--gray);padding:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>南凤中医 TCM Duty Roster</h1>
+  <div class="sub" id="updated"></div>
+</header>
+<div class="mode">
+  <button id="mDay" class="on">日程 Day</button>
+  <button id="mStaff">人员 Staff</button>
+</div>
+<div id="dayCtl">
+  <div class="wknav" id="wknav"></div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<main id="main"></main>
+<footer>Nam Hong Welfare Service Society 南凤福利协会 — TCM</footer>
+<script src="data.js"></script>
+<script>
+let DATA=null,byDate={},weeks=[],selWeek=0,selDate=null,mode="day",selPerson=null;
+const DOWE=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],DOWC=["一","二","三","四","五","六","日"];
+const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const dm=s=>s.slice(8)+"/"+s.slice(5,7);
+const dow=s=>{const d=new Date(s+"T12:00:00");return (d.getDay()+6)%7};
+const hasData=dd=>dd&&(dd.m.length||dd.a.length||dd.e.length||dd.off.length);
+function init(j){
+  DATA=j;byDate={};j.days.forEach(d=>byDate[d.date]=d);
+  document.getElementById("updated").textContent="Updated 更新: "+(j.updated||"");
+  // group into weeks by Monday
+  const wk={};
+  j.days.forEach(d=>{const dt0=new Date(d.date+"T12:00:00");dt0.setDate(dt0.getDate()-((dt0.getDay()+6)%7));const m=iso(dt0);(wk[m]=wk[m]||[]).push(d.date);});
+  weeks=Object.keys(wk).sort().map(m=>({mon:m,dates:wk[m].sort()}));
+  const t=iso(new Date());
+  selWeek=0;
+  for(let i=0;i<weeks.length;i++){if(weeks[i].dates.some(x=>x>=t)){selWeek=i;break;}selWeek=weeks.length-1;}
+  selDate=weeks[selWeek].dates.find(x=>x===t)||weeks[selWeek].dates.find(x=>x>=t)||weeks[selWeek].dates[0];
+  render();
+}
+function render(){
+  document.getElementById("mDay").className=mode==="day"?"on":"";
+  document.getElementById("mStaff").className=mode==="staff"?"on":"";
+  document.getElementById("dayCtl").style.display=mode==="day"?"":"none";
+  if(mode==="day")renderDay();else renderStaff();
+}
+function renderDay(){
+  const wn=document.getElementById("wknav");wn.innerHTML="";
+  weeks.forEach(function(w,i){
+    const b=document.createElement("button");
+    b.className=i===selWeek?"on":"";
+    b.textContent="Week "+(i+1)+"  "+dm(w.dates[0])+" – "+dm(w.dates[w.dates.length-1]);
+    b.onclick=function(){selWeek=i;selDate=w.dates[0];render();};
+    wn.appendChild(b);
+  });
+  const tabs=document.getElementById("tabs");tabs.innerHTML="";
+  const t=iso(new Date());
+  weeks[selWeek].dates.forEach(function(d){
+    const b=document.createElement("button");
+    b.className="tab"+(d===selDate?" on":"")+(hasData(byDate[d])?"":" nodata")+(d===t?" today":"");
+    b.innerHTML='<span class="dw">'+DOWE[dow(d)]+'</span><span class="dd">'+parseInt(d.slice(8),10)+'</span>';
+    b.onclick=function(){selDate=d;render();};
+    tabs.appendChild(b);
+  });
+  const m=document.getElementById("main");
+  const dd=byDate[selDate];
+  const hdr=dm(selDate)+"/"+selDate.slice(0,4)+" 星期"+DOWC[dow(selDate)]+" ("+DOWE[dow(selDate)]+")";
+  if(!hasData(dd)){m.innerHTML='<div class="datehdr">'+hdr+'</div><div class="empty">No roster for this day 本日暂无排班</div>';return;}
+  let h='<div class="datehdr">'+hdr+'</div>';
+  const secs=[["m","早 Morning"],["a","午 Afternoon"],["e","晚 Night"]];
+  secs.forEach(function(s){
+    const rows=dd[s[0]];
+    if(!rows.length)return;
+    h+='<div class="sesshdr">'+s[1]+'</div><table class="sess"><tr><th>诊室</th><th>医师</th><th>前台</th><th>职务</th></tr>';
+    rows.forEach(function(r){
+      h+='<tr><td class="rm">'+(r[0]||"—")+'</td><td>'+(r[1]||"")+'</td><td>'+(r[2]||"")+'</td><td class="rl">'+(r[3]||"")+'</td></tr>';
+    });
+    h+='</table>';
+  });
+  if(dd.off.length){
+    h+='<div class="offbox"><div class="t">请假 OFF</div>';
+    dd.off.forEach(function(o){h+='<span class="offbadge">'+o[0]+' — '+(o[1]||"OFF")+'</span>';});
+    h+='</div>';
+  }
+  m.innerHTML=h;
+}
+function personDay(dd,p){
+  // returns {m:txt,a:txt,e:txt,off:remark|null}
+  const res={m:"",a:"",e:"",off:null};
+  dd.off.forEach(function(o){if(o[0]===p)res.off=o[1]||"OFF";});
+  ["m","a","e"].forEach(function(s){
+    const parts=[];
+    dd[s].forEach(function(r){
+      if(r[1]===p)parts.push(r[0]||"✓");
+      if(r[2]===p)parts.push((r[3]||"✓")+(r[0]?"·"+r[0]:""));
+    });
+    res[s]=parts.join(", ");
+  });
+  return res;
+}
+function renderStaff(){
+  const m=document.getElementById("main");
+  const names=[];
+  let h='<select class="pick" id="pick"><option value="">— 选择 Select name —</option><optgroup label="医师 Physicians">';
+  (DATA.phys||[]).forEach(function(n){h+='<option'+(n===selPerson?' selected':'')+'>'+n+'</option>';});
+  h+='</optgroup><optgroup label="前台 Front Desk">';
+  (DATA.fd||[]).forEach(function(n){h+='<option'+(n===selPerson?' selected':'')+'>'+n+'</option>';});
+  h+='</optgroup></select>';
+  if(selPerson){
+    h+='<table class="person"><tr><th style="text-align:left;padding-left:10px">日期 Date</th><th>早</th><th>午</th><th>晚</th></tr>';
+    weeks.forEach(function(w,wi){
+      h+='<tr class="wk"><td colspan="4">Week '+(wi+1)+'  '+dm(w.dates[0])+' – '+dm(w.dates[w.dates.length-1])+'</td></tr>';
+      w.dates.forEach(function(d){
+        const dd=byDate[d],lbl=dm(d)+" "+DOWE[dow(d)];
+        if(!hasData(dd)){h+='<tr><td class="day">'+lbl+'</td><td colspan="3" style="color:#bbb">—</td></tr>';return;}
+        const r=personDay(dd,selPerson);
+        if(r.off&&!r.m&&!r.a&&!r.e){h+='<tr><td class="day">'+lbl+'</td><td colspan="3" class="offcell">请假 '+r.off+'</td></tr>';return;}
+        h+='<tr><td class="day">'+lbl+'</td><td>'+(r.m||"")+'</td><td>'+(r.a||"")+'</td><td>'+(r.e||"")+'</td></tr>';
+      });
+    });
+    h+='</table>';
+  }else{
+    h+='<div class="empty">Select a name to see their week 选择姓名查看整周排班</div>';
+  }
+  m.innerHTML=h;
+  document.getElementById("pick").onchange=function(){selPerson=this.value||null;render();};
+}
+document.getElementById("mDay").onclick=function(){mode="day";render();};
+document.getElementById("mStaff").onclick=function(){mode="staff";render();};
+function boot(){
+  if(window.ROSTER){init(window.ROSTER);}
+  else{document.getElementById("main").innerHTML='<div class="empty">Unable to load roster 无法载入排班</div>';}
+}
+fetch("data.json?t="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(init).catch(boot);
+</script>
+</body>
+</html>
